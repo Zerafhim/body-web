@@ -9,7 +9,46 @@
   <link rel="stylesheet" href="c.css">
 </head>
 <body>
-  <div class="app-shell">
+  <section class="auth-page" id="auth-page">
+    <div class="auth-card">
+      <a class="brand auth-brand" href="/" aria-label="Raga">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M16 27s-10-6.2-10-14a5.7 5.7 0 0 1 10-3.7A5.7 5.7 0 0 1 26 13c0 7.8-10 14-10 14Z" fill="currentColor"/>
+            <path d="M10 16h3l2-4 3 8 2-4h2" stroke="#F6F7F2" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span>raga<span class="brand-period">.</span></span>
+      </a>
+      <p class="eyebrow">RUANG PRIBADI</p>
+      <h1 id="auth-title">Selamat datang kembali</h1>
+      <p class="auth-description" id="auth-description">Masuk untuk melihat catatan milik akunmu.</p>
+      <form id="login-form">
+        <label class="auth-field" for="login-email">Email
+          <input id="login-email" type="email" autocomplete="email" maxlength="254" required>
+        </label>
+        <label class="auth-field" for="login-password">Kata sandi
+          <input id="login-password" type="password" autocomplete="current-password" maxlength="128" required>
+        </label>
+        <button class="button button-primary auth-submit" type="submit">Masuk</button>
+      </form>
+      <form id="register-form" class="hidden">
+        <label class="auth-field" for="register-email">Email
+          <input id="register-email" type="email" autocomplete="email" maxlength="254" required>
+        </label>
+        <label class="auth-field" for="register-password">Kata sandi
+          <input id="register-password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required>
+        </label>
+        <p class="password-hint">Gunakan minimal 12 karakter. Buat kata sandi unik dan jangan bagikan ke orang lain.</p>
+        <button class="button button-primary auth-submit" type="submit">Buat akun</button>
+      </form>
+      <p class="auth-message" id="auth-message" role="alert" aria-live="polite"></p>
+      <p class="auth-switch" id="auth-switch">Belum punya akun? <button type="button" id="toggle-auth">Daftar di sini</button></p>
+      <p class="auth-privacy">Setiap akun hanya dapat melihat dan mengubah catatannya sendiri.</p>
+    </div>
+  </section>
+
+  <div class="app-shell hidden">
     <aside class="sidebar">
       <a class="brand" href="#" aria-label="Raga, beranda">
         <span class="brand-mark" aria-hidden="true">
@@ -41,7 +80,7 @@
 
       <div class="profile">
         <span class="avatar" aria-hidden="true">A</span>
-        <span class="profile-copy"><strong>Alexander Alfredo</strong><span>Ruang pribadi</span></span>
+        <span class="profile-copy"><strong id="account-email">Akun Raga</strong><span>Akun pribadi</span></span>
         <span class="profile-dot" aria-hidden="true"></span>
       </div>
     </aside>
@@ -49,9 +88,11 @@
     <main class="main-content" id="ringkasan">
       <header class="topbar">
         <p class="breadcrumb">Ruang pribadi <span>/</span> <strong>Ringkasan</strong></p>
-        <p class="privacy-label"><span class="privacy-dot" aria-hidden="true"></span> Data tersimpan di server lokal</p>
+        <div class="topbar-actions">
+          <p class="privacy-label"><span class="privacy-dot" aria-hidden="true"></span> Data akunmu terpisah dan pribadi</p>
+          <button class="logout-button" id="logout-button" type="button">Keluar</button>
+        </div>
       </header>
-
       <section class="welcome">
         <div>
           <p class="eyebrow"><span class="eyebrow-line"></span> CATATAN PERJALANANMU</p>
@@ -169,7 +210,7 @@
 
       <footer class="page-footer">
         <span>Dibuat dengan perhatian untuk perjalananmu.</span>
-        <span><span class="footer-heart" aria-hidden="true">♥</span> oleh Alexander Alfredo</span>
+        <span><span class="footer-heart" aria-hidden="true">♥</span> Ruang pribadi Raga</span>
       </footer>
     </main>
   </div>
@@ -186,6 +227,10 @@
     const recordList = document.querySelector("#record-list");
     const emptyState = document.querySelector("#empty-state");
     const formMessage = document.querySelector("#form-message");
+    const authPage = document.querySelector("#auth-page");
+    const authMessage = document.querySelector("#auth-message");
+    const loginForm = document.querySelector("#login-form");
+    const registerForm = document.querySelector("#register-form");
     let editingId = null;
     let records = [];
 
@@ -207,9 +252,16 @@
         } catch {
           message = `Server merespons dengan kode ${response.status}.`;
         }
-        throw new Error(message);
+        const error = new Error(message);
+        error.status = response.status;
+        throw error;
       }
       return response.status === 204 ? null : response.json();
+    }
+
+    function setAuthMessage(message, isError = true) {
+      authMessage.textContent = message;
+      authMessage.classList.toggle("message-error", isError);
     }
 
     async function migrateLegacyRecords() {
@@ -227,7 +279,7 @@
           birth_year: 2000,
           weight: Number(oldRecord.weight),
           height: Number(oldRecord.height),
-          note: ""
+          note: oldRecord.note || ""
         };
         const alreadySaved = savedRecords.some(record =>
           record.date === legacyRecord.date &&
@@ -396,17 +448,99 @@
     });
 
     document.querySelector("#cancel-edit").addEventListener("click", resetForm);
-    dateInput.value = localDateValue();
-    (async function initialize() {
+    function setAuthMode(registering) {
+      registerForm.classList.toggle("hidden", !registering);
+      loginForm.classList.toggle("hidden", registering);
+      document.querySelector("#auth-title").textContent = registering ? "Buat akun Raga" : "Selamat datang kembali";
+      document.querySelector("#auth-description").textContent = registering
+        ? "Buat ruang pribadi untuk menyimpan catatanmu."
+        : "Masuk untuk melihat catatan milik akunmu.";
+      document.querySelector("#auth-switch").innerHTML = registering
+        ? 'Sudah punya akun? <button type="button" id="toggle-auth">Masuk di sini</button>'
+        : 'Belum punya akun? <button type="button" id="toggle-auth">Daftar di sini</button>';
+      setAuthMessage("");
+    }
+
+    document.querySelector("#auth-switch").addEventListener("click", event => {
+      if (event.target.id === "toggle-auth") {
+        setAuthMode(registerForm.classList.contains("hidden"));
+      }
+    });
+
+    async function loadAccount(email) {
+      document.querySelector("#account-email").textContent = email;
+      document.querySelector(".profile .avatar").textContent = email[0].toUpperCase();
+      authPage.classList.add("hidden");
+      document.querySelector(".app-shell").classList.remove("hidden");
       try {
         records = await apiRequest("/api/measurements");
         await migrateLegacyRecords();
         records = await apiRequest("/api/measurements");
         renderRecords();
       } catch (error) {
+        showMessage(`Tidak dapat memuat catatan: ${error.message}`, true);
+      }
+    }
+
+    loginForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      setAuthMessage("");
+      try {
+        const account = await apiRequest("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({
+            email: document.querySelector("#login-email").value,
+            password: document.querySelector("#login-password").value
+          })
+        });
+        loginForm.reset();
+        await loadAccount(account.email);
+      } catch (error) {
+        setAuthMessage(error.message);
+      }
+    });
+
+    registerForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      setAuthMessage("");
+      try {
+        const account = await apiRequest("/api/auth/register", {
+          method: "POST",
+          body: JSON.stringify({
+            email: document.querySelector("#register-email").value,
+            password: document.querySelector("#register-password").value
+          })
+        });
+        registerForm.reset();
+        await loadAccount(account.email);
+      } catch (error) {
+        setAuthMessage(error.message);
+      }
+    });
+
+    document.querySelector("#logout-button").addEventListener("click", async () => {
+      try {
+        await apiRequest("/api/auth/logout", { method: "POST" });
         records = [];
-        renderRecords();
-        showMessage(`Tidak dapat terhubung ke FastAPI. Jalankan "python body.py" lalu buka http://127.0.0.1:8000. Detail: ${error.message}`, true);
+        document.querySelector(".app-shell").classList.add("hidden");
+        authPage.classList.remove("hidden");
+        setAuthMessage("Kamu sudah keluar.", false);
+      } catch (error) {
+        showMessage(`Tidak dapat keluar: ${error.message}`, true);
+      }
+    });
+
+    dateInput.value = localDateValue();
+    (async function initialize() {
+      try {
+        const account = await apiRequest("/api/auth/me");
+        await loadAccount(account.email);
+      } catch (error) {
+        if (error.status === 401) {
+          authPage.classList.remove("hidden");
+        } else {
+          setAuthMessage(`Tidak dapat menghubungi server. Muat ulang halaman untuk mencoba lagi. ${error.message}`);
+        }
       }
     })();
   </script>
