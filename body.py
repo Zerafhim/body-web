@@ -26,7 +26,7 @@ if DATABASE_URL.startswith("postgres://"):
 elif DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
-IS_DEPLOYED = bool(os.getenv("RENDER"))
+IS_DEPLOYED = bool(os.getenv("RENDER") or os.getenv("VERCEL"))
 SESSION_SECRET = os.getenv("SESSION_SECRET")
 if not SESSION_SECRET:
     if IS_DEPLOYED:
