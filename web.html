@@ -49,7 +49,7 @@
     <main class="main-content" id="ringkasan">
       <header class="topbar">
         <p class="breadcrumb">Ruang pribadi <span>/</span> <strong>Ringkasan</strong></p>
-        <p class="privacy-label"><span class="privacy-dot" aria-hidden="true"></span> Data tersimpan di browser ini</p>
+        <p class="privacy-label"><span class="privacy-dot" aria-hidden="true"></span> Data tersimpan di server lokal</p>
       </header>
 
       <section class="welcome">
@@ -98,9 +98,27 @@
             </div>
             <span class="heading-icon" aria-hidden="true">＋</span>
           </div>
-          <p class="panel-description">Isi sesuai pengukuran terakhirmu.</p>
+          <p class="panel-description">Isi data sesuai aturan pada program Python.</p>
 
           <form id="measurement-form">
+            <div class="field">
+              <label for="record-name">Nama lengkap</label>
+              <input id="record-name" name="name" type="text" minlength="6" maxlength="100" title="Gunakan huruf dan spasi saja, minimal 6 karakter, dengan format Title Case." placeholder="Contoh: Alexander Alfredo" autocomplete="name" required>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="record-gender">Gender</label>
+                <select id="record-gender" name="gender" required>
+                  <option value="">Pilih gender</option>
+                  <option value="M">M</option>
+                  <option value="L">L</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="record-birth-year">Tahun lahir <span>(1900–2011)</span></label>
+                <input id="record-birth-year" name="birth_year" type="number" min="1900" max="2011" step="1" placeholder="Contoh: 2000" required>
+              </div>
+            </div>
             <div class="field">
               <label for="record-date">Tanggal pengukuran</label>
               <input id="record-date" name="date" type="date" required>
@@ -108,16 +126,12 @@
             <div class="field-row">
               <div class="field">
                 <label for="record-weight">Berat badan <span>(kg)</span></label>
-                <div class="input-wrap"><input id="record-weight" name="weight" type="number" min="1" max="500" step="0.1" placeholder="Contoh: 58.5" required><span>kg</span></div>
+                <div class="input-wrap"><input id="record-weight" name="weight" type="number" min="0" step="1" placeholder="Contoh: 58" required><span>kg</span></div>
               </div>
               <div class="field">
                 <label for="record-height">Tinggi badan <span>(cm)</span></label>
-                <div class="input-wrap"><input id="record-height" name="height" type="number" min="50" max="250" step="0.1" placeholder="Contoh: 165" required><span>cm</span></div>
+                <div class="input-wrap"><input id="record-height" name="height" type="number" min="1" step="1" placeholder="Contoh: 165" required><span>cm</span></div>
               </div>
-            </div>
-            <div class="field">
-              <label for="record-note">Catatan <span>(opsional)</span></label>
-              <input id="record-note" name="note" type="text" maxlength="120" placeholder="Contoh: pengukuran pagi hari">
             </div>
             <div class="form-actions">
               <button class="button button-primary" type="submit" id="submit-button"><span id="submit-label">Simpan catatan</span><span aria-hidden="true">↗</span></button>
@@ -138,7 +152,7 @@
           <p class="panel-description">Catatanmu tersusun dari yang terbaru.</p>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>TANGGAL</th><th>BERAT</th><th>TINGGI</th><th>IMT</th><th><span class="visually-hidden">Aksi</span></th></tr></thead>
+              <thead><tr><th>ID</th><th>NAMA</th><th>GENDER</th><th>UMUR</th><th>TANGGAL</th><th>BERAT</th><th>TINGGI</th><th>IMT</th><th><span class="visually-hidden">Aksi</span></th></tr></thead>
               <tbody id="record-list"></tbody>
             </table>
             <div class="empty-state" id="empty-state">
@@ -164,9 +178,11 @@
     const storageKey = "raga-measurements";
     const form = document.querySelector("#measurement-form");
     const dateInput = document.querySelector("#record-date");
+    const nameInput = document.querySelector("#record-name");
+    const genderInput = document.querySelector("#record-gender");
+    const birthYearInput = document.querySelector("#record-birth-year");
     const weightInput = document.querySelector("#record-weight");
     const heightInput = document.querySelector("#record-height");
-    const noteInput = document.querySelector("#record-note");
     const recordList = document.querySelector("#record-list");
     const emptyState = document.querySelector("#empty-state");
     const formMessage = document.querySelector("#form-message");
@@ -178,34 +194,57 @@
       formMessage.classList.toggle("message-error", isError);
     }
 
-    function loadRecords() {
-      try {
-        const stored = localStorage.getItem(storageKey);
-        if (!stored) return [];
-        const parsed = JSON.parse(stored);
-        if (!Array.isArray(parsed)) throw new Error("Format catatan tidak valid.");
-        return parsed;
-      } catch (error) {
-        console.error("Tidak dapat membaca catatan yang tersimpan:", error);
-        showMessage("Catatan tersimpan tidak dapat dibaca. Periksa penyimpanan browser.", true);
-        return [];
+    async function apiRequest(path, options = {}) {
+      const headers = new Headers(options.headers || {});
+      if (options.body) headers.set("Content-Type", "application/json");
+      const response = await fetch(path, { ...options, headers });
+      if (!response.ok) {
+        let message = `Server merespons dengan kode ${response.status}.`;
+        try {
+          const payload = await response.json();
+          if (typeof payload.detail === "string") message = payload.detail;
+          else if (Array.isArray(payload.detail)) message = payload.detail.map(item => item.msg).join(", ");
+        } catch {
+          message = `Server merespons dengan kode ${response.status}.`;
+        }
+        throw new Error(message);
       }
+      return response.status === 204 ? null : response.json();
     }
 
-    function saveRecords(nextRecords) {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(nextRecords));
-        records = nextRecords;
-        return true;
-      } catch (error) {
-        console.error("Tidak dapat menyimpan catatan:", error);
-        showMessage("Catatan tidak dapat disimpan. Pastikan penyimpanan browser tersedia.", true);
-        return false;
-      }
-    }
+    async function migrateLegacyRecords() {
+      const stored = localStorage.getItem(storageKey);
+      if (!stored) return;
 
-    function calculateBmi(weight, height) {
-      return weight / ((height / 100) ** 2);
+      const oldRecords = JSON.parse(stored);
+      if (!Array.isArray(oldRecords)) throw new Error("Format catatan lama tidak valid.");
+      const savedRecords = await apiRequest("/api/measurements");
+      for (const oldRecord of oldRecords) {
+        const legacyRecord = {
+          date: oldRecord.date,
+          name: "Legacy User",
+          gender: "M",
+          birth_year: 2000,
+          weight: Number(oldRecord.weight),
+          height: Number(oldRecord.height),
+          note: ""
+        };
+        const alreadySaved = savedRecords.some(record =>
+          record.date === legacyRecord.date &&
+          record.name === legacyRecord.name &&
+          Number(record.weight) === legacyRecord.weight &&
+          Number(record.height) === legacyRecord.height &&
+          record.note === legacyRecord.note
+        );
+        if (!alreadySaved) {
+          const saved = await apiRequest("/api/measurements", {
+            method: "POST",
+            body: JSON.stringify(legacyRecord)
+          });
+          savedRecords.push(saved);
+        }
+      }
+      localStorage.removeItem(storageKey);
     }
 
     function formatDate(value) {
@@ -226,6 +265,10 @@
 
       for (const record of sorted) {
         const row = document.createElement("tr");
+        const idCell = document.createElement("td");
+        const nameCell = document.createElement("td");
+        const genderCell = document.createElement("td");
+        const ageCell = document.createElement("td");
         const dateCell = document.createElement("td");
         const weightCell = document.createElement("td");
         const heightCell = document.createElement("td");
@@ -239,13 +282,17 @@
         const weight = Number(record.weight);
         const height = Number(record.height);
 
+        idCell.textContent = record.id;
+        nameCell.textContent = record.name;
+        genderCell.textContent = record.gender;
+        ageCell.textContent = `${record.age} th`;
         dateStrong.textContent = formatDate(record.date);
-        dateNote.textContent = record.note || "Pengukuran";
+        dateNote.textContent = record.note || record.bmi_category;
         dateCell.className = "date-cell";
         dateCell.append(dateStrong, dateNote);
         weightCell.innerHTML = `${weight.toFixed(1)} <span>kg</span>`;
         heightCell.innerHTML = `${height.toFixed(0)} <span>cm</span>`;
-        bmiCell.innerHTML = `${calculateBmi(weight, height).toFixed(1)}`;
+        bmiCell.innerHTML = `${Number(record.bmi).toFixed(1)} <span>${record.bmi_category}</span>`;
         editButton.type = "button";
         editButton.className = "action-button";
         editButton.textContent = "Edit";
@@ -259,7 +306,7 @@
         actions.className = "row-actions";
         actions.append(editButton, deleteButton);
         actionsCell.append(actions);
-        row.append(dateCell, weightCell, heightCell, bmiCell, actionsCell);
+        row.append(idCell, nameCell, genderCell, ageCell, dateCell, weightCell, heightCell, bmiCell, actionsCell);
         recordList.append(row);
       }
 
@@ -268,8 +315,8 @@
       if (sorted.length) {
         const latest = sorted[0];
         document.querySelector("#latest-weight").innerHTML = `${Number(latest.weight).toFixed(1)} <span>kg</span>`;
-        document.querySelector("#latest-bmi").innerHTML = `${calculateBmi(Number(latest.weight), Number(latest.height)).toFixed(1)} <span>IMT</span>`;
-        document.querySelector("#weight-date").textContent = `Terakhir dicatat ${formatDate(latest.date)}`;
+        document.querySelector("#latest-bmi").innerHTML = `${Number(latest.bmi).toFixed(1)} <span>IMT</span>`;
+        document.querySelector("#weight-date").textContent = `${latest.name} · ${latest.age} tahun · ${formatDate(latest.date)}`;
       } else {
         document.querySelector("#latest-weight").innerHTML = `— <span>kg</span>`;
         document.querySelector("#latest-bmi").innerHTML = `— <span>IMT</span>`;
@@ -280,6 +327,7 @@
     function resetForm() {
       form.reset();
       dateInput.value = localDateValue();
+      document.querySelector("#record-gender").value = "";
       editingId = null;
       document.querySelector("#form-title").textContent = "Catat data baru";
       document.querySelector("#submit-label").textContent = "Simpan catatan";
@@ -290,9 +338,11 @@
     function startEditing(record) {
       editingId = record.id;
       dateInput.value = record.date;
+      nameInput.value = record.name;
+      genderInput.value = record.gender;
+      birthYearInput.value = record.birth_year;
       weightInput.value = record.weight;
       heightInput.value = record.height;
-      noteInput.value = record.note || "";
       document.querySelector("#form-title").textContent = "Perbarui catatan";
       document.querySelector("#submit-label").textContent = "Simpan perubahan";
       document.querySelector("#cancel-edit").classList.remove("hidden");
@@ -300,40 +350,65 @@
       weightInput.focus({ preventScroll: true });
     }
 
-    function deleteRecord(id) {
+    async function deleteRecord(id) {
       if (!window.confirm("Hapus catatan pengukuran ini?")) return;
-      if (saveRecords(records.filter(record => record.id !== id))) {
+      try {
+        await apiRequest(`/api/measurements/${encodeURIComponent(id)}`, { method: "DELETE" });
+        records = records.filter(record => record.id !== id);
         if (editingId === id) resetForm();
         renderRecords();
         showMessage("Catatan berhasil dihapus.");
+      } catch (error) {
+        showMessage(`Tidak dapat menghapus catatan: ${error.message}`, true);
       }
     }
 
-    form.addEventListener("submit", event => {
+    form.addEventListener("submit", async event => {
       event.preventDefault();
       const isEditing = editingId !== null;
       const measurement = {
-        id: editingId || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`),
         date: dateInput.value,
+        name: nameInput.value.trim(),
+        gender: genderInput.value,
+        birth_year: Number(birthYearInput.value),
         weight: Number(weightInput.value),
-        height: Number(heightInput.value),
-        note: noteInput.value.trim()
+        height: Number(heightInput.value)
       };
-      const nextRecords = editingId
-        ? records.map(record => record.id === editingId ? measurement : record)
-        : [...records, measurement];
-
-      if (saveRecords(nextRecords)) {
+      try {
+        const savedRecord = isEditing
+          ? await apiRequest(`/api/measurements/${encodeURIComponent(editingId)}`, {
+              method: "PUT",
+              body: JSON.stringify(measurement)
+            })
+          : await apiRequest("/api/measurements", {
+              method: "POST",
+              body: JSON.stringify(measurement)
+            });
+        records = isEditing
+          ? records.map(record => record.id === editingId ? savedRecord : record)
+          : [...records, savedRecord];
         renderRecords();
         resetForm();
         showMessage(isEditing ? "Perubahan catatan berhasil disimpan." : "Catatan baru berhasil disimpan.");
+      } catch (error) {
+        showMessage(`Tidak dapat menyimpan catatan: ${error.message}`, true);
       }
     });
 
     document.querySelector("#cancel-edit").addEventListener("click", resetForm);
     dateInput.value = localDateValue();
-    records = loadRecords();
-    renderRecords();
+    (async function initialize() {
+      try {
+        records = await apiRequest("/api/measurements");
+        await migrateLegacyRecords();
+        records = await apiRequest("/api/measurements");
+        renderRecords();
+      } catch (error) {
+        records = [];
+        renderRecords();
+        showMessage(`Tidak dapat terhubung ke FastAPI. Jalankan "python body.py" lalu buka http://127.0.0.1:8000. Detail: ${error.message}`, true);
+      }
+    })();
   </script>
 </body>
 </html>
